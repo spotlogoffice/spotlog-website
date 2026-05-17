@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "env": [
+    "VITE_R2_ACCOUNT_ID",
+    "VITE_R2_ACCESS_KEY_ID",
+    "VITE_R2_SECRET_ACCESS_KEY",
+    "VITE_R2_ENDPOINT",
+    "VITE_R2_BUCKET_NAME"
+  ]
+}
