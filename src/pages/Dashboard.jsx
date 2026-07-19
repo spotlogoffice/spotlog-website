@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import './Dashboard.css';
 
 // Pomocna funkcija: ISO broj nedelje (1-52/53)
@@ -23,6 +23,17 @@ function formatFilename(date, index) {
 function formatDate(date) {
   const meseci = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
   return `${date.getDate()}. ${meseci[date.getMonth()]} ${date.getFullYear()}.`;
+}
+
+// Pomocna funkcija: inicijali iz email adrese
+function getInitials(email) {
+  if (!email) return 'MN';
+  const namePart = email.split('@')[0];
+  const parts = namePart.split(/[._-]/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return namePart.substring(0, 2).toUpperCase();
 }
 
 // Mock projekti (kasnije ide iz Supabase)
@@ -61,7 +72,7 @@ const MOCK_PROJECTS = [
   }
 ];
 
-// Mock fotografije za prvi projekat (kasnije ide iz Supabase)
+// Mock fotografije (kasnije ide iz Supabase)
 function generateMockPhotos() {
   const photos = [];
   const now = new Date();
@@ -74,7 +85,6 @@ function generateMockPhotos() {
     'linear-gradient(135deg, #D4DCE0 0%, #A8B4BC 100%)'
   ];
   
-  // Napravi ~30 fotografija u poslednjih 45 dana
   for (let day = 0; day < 45; day++) {
     const photosThisDay = Math.floor(Math.random() * 4) + 2;
     for (let i = 1; i <= photosThisDay; i++) {
@@ -93,12 +103,29 @@ function generateMockPhotos() {
 
 const MOCK_PHOTOS = generateMockPhotos();
 
-export default function Dashboard() {
+export default function Dashboard({ user, onLogout }) {
   const [selectedProjectId, setSelectedProjectId] = useState(1);
   const [activeFilter, setActiveFilter] = useState('all');
   const [isDark, setIsDark] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   const selectedProject = MOCK_PROJECTS.find(p => p.id === selectedProjectId);
+  const userEmail = user?.email || 'gost@spotlog.co';
+  const userInitials = getInitials(userEmail);
+
+  // Zatvori meni na klik van
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   const toggleTheme = () => {
     const next = !isDark;
@@ -108,6 +135,11 @@ export default function Dashboard() {
     } else {
       document.body.removeAttribute('data-theme');
     }
+  };
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    if (onLogout) onLogout();
   };
 
   // Grupise fotografije po aktivnom filteru
@@ -154,7 +186,6 @@ export default function Dashboard() {
     year: 'Grupisano po godini'
   };
 
-  // Preuzimanje grupe (placeholder - kasnije ZIP)
   const handleDownloadGroup = (group) => {
     const projectSlug = selectedProject.name.split(' - ')[1] || selectedProject.name;
     let zipName;
@@ -201,7 +232,38 @@ export default function Dashboard() {
             )}
           </button>
           <span className="dash-lang"><strong>SR</strong> | EN</span>
-          <div className="dash-avatar">MN</div>
+          
+          <div className="user-menu" ref={menuRef}>
+            <button
+              className="dash-avatar"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Korisnicki meni"
+            >
+              {userInitials}
+            </button>
+            
+            {menuOpen && (
+              <div className="user-dropdown">
+                <div className="user-info">
+                  <div className="user-email">{userEmail}</div>
+                  {user?.loginDate && (
+                    <div className="user-meta">
+                      Prijava: {new Date(user.loginDate).toLocaleDateString('sr-RS')}
+                    </div>
+                  )}
+                </div>
+                <div className="user-divider"></div>
+                <button className="user-menu-item" onClick={handleLogout}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                  </svg>
+                  Odjavi se
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
