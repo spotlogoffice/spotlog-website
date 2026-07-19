@@ -1,123 +1,245 @@
-import { useState, useRef } from 'react'
-import './Dashboard.css'
+import { useState, useMemo } from 'react';
+import './Dashboard.css';
 
-export default function Dashboard({ user, onLogout }) {
-  const [projects, setProjects] = useState([
-    {
-      id: 1,
-      name: 'Stambeni kompleks - Novi Beograd',
-      location: 'Beograd, Srbija',
-      photos: 247,
-      status: 'Aktivan',
-      createdDate: '2024-01-15'
-    },
-    {
-      id: 2,
-      name: 'Poslovni objekat - BW Galerija',
-      location: 'Beograd, Srbija',
-      photos: 1203,
-      status: 'Aktivan',
-      createdDate: '2023-11-20'
-    }
-  ])
+// Pomocna funkcija: ISO broj nedelje (1-52/53)
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
 
-  const [selectedProject, setSelectedProject] = useState(projects[0])
-  const [photos, setPhotos] = useState([])
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef(null)
+// Pomocna funkcija: YYYYMMDD_XXX imenovanje
+function formatFilename(date, index) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const n = String(index).padStart(3, '0');
+  return `${y}${m}${d}_${n}`;
+}
 
-  const handlePhotoUpload = (e) => {
-    const files = e.target.files
-    if (!files) return
+// Pomocna funkcija: format datuma
+function formatDate(date) {
+  const meseci = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+  return `${date.getDate()}. ${meseci[date.getMonth()]} ${date.getFullYear()}.`;
+}
 
-    setUploading(true)
-
-    // Simuliraj upload
-    setTimeout(() => {
-      const newPhotos = Array.from(files).map((file, idx) => ({
-        id: Date.now() + idx,
-        name: file.name,
-        date: new Date().toLocaleDateString('sr-RS'),
-        time: new Date().toLocaleTimeString('sr-RS'),
-        size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
-      }))
-
-      setPhotos([...newPhotos, ...photos])
-      setSelectedProject({
-        ...selectedProject,
-        photos: selectedProject.photos + files.length
-      })
-
-      setUploading(false)
-    }, 1500)
+// Mock projekti (kasnije ide iz Supabase)
+const MOCK_PROJECTS = [
+  {
+    id: 1,
+    name: 'Poslovni objekat - BW Galerija',
+    location: 'Beograd, Srbija',
+    photoCount: 1203,
+    status: 'aktivan',
+    activeFrom: '15.03.2026'
+  },
+  {
+    id: 2,
+    name: 'Stambeni kompleks - Novi Beograd',
+    location: 'Beograd, Srbija',
+    photoCount: 247,
+    status: 'aktivan',
+    activeFrom: '02.06.2026'
+  },
+  {
+    id: 3,
+    name: 'Stambena zgrada - Dedinje',
+    location: 'Beograd, Srbija',
+    photoCount: 856,
+    status: 'zavrsen',
+    activeFrom: '10.01.2025'
+  },
+  {
+    id: 4,
+    name: 'CNC fabrika - Ruma',
+    location: 'Ruma, Srbija',
+    photoCount: 2847,
+    status: 'aktivan',
+    activeFrom: '20.09.2025'
   }
+];
 
-  const handleCreateProject = () => {
-    const newProject = {
-      id: Date.now(),
-      name: 'Novi projekat',
-      location: 'Lokacija',
-      photos: 0,
-      status: 'Aktivan',
-      createdDate: new Date().toISOString().split('T')[0]
+// Mock fotografije za prvi projekat (kasnije ide iz Supabase)
+function generateMockPhotos() {
+  const photos = [];
+  const now = new Date();
+  const gradijenti = [
+    'linear-gradient(135deg, #E8E8E8 0%, #D0D0D0 100%)',
+    'linear-gradient(135deg, #DCE4E8 0%, #B8C4CC 100%)',
+    'linear-gradient(135deg, #E4DCC8 0%, #C8B896 100%)',
+    'linear-gradient(135deg, #D8D8D8 0%, #B8B8B8 100%)',
+    'linear-gradient(135deg, #E8DDD0 0%, #C4B098 100%)',
+    'linear-gradient(135deg, #D4DCE0 0%, #A8B4BC 100%)'
+  ];
+  
+  // Napravi ~30 fotografija u poslednjih 45 dana
+  for (let day = 0; day < 45; day++) {
+    const photosThisDay = Math.floor(Math.random() * 4) + 2;
+    for (let i = 1; i <= photosThisDay; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - day);
+      photos.push({
+        id: `${day}-${i}`,
+        date: date,
+        filename: formatFilename(date, i),
+        gradient: gradijenti[(day + i) % gradijenti.length]
+      });
     }
-    setProjects([...projects, newProject])
-    setSelectedProject(newProject)
-    setPhotos([])
   }
+  return photos;
+}
+
+const MOCK_PHOTOS = generateMockPhotos();
+
+export default function Dashboard() {
+  const [selectedProjectId, setSelectedProjectId] = useState(1);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [isDark, setIsDark] = useState(false);
+
+  const selectedProject = MOCK_PROJECTS.find(p => p.id === selectedProjectId);
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      document.body.setAttribute('data-theme', 'dark');
+    } else {
+      document.body.removeAttribute('data-theme');
+    }
+  };
+
+  // Grupise fotografije po aktivnom filteru
+  const groupedPhotos = useMemo(() => {
+    const groups = {};
+    
+    MOCK_PHOTOS.forEach(photo => {
+      let key;
+      let label;
+      const d = photo.date;
+      
+      if (activeFilter === 'all' || activeFilter === 'day') {
+        key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        label = formatDate(d);
+      } else if (activeFilter === 'week') {
+        const week = getISOWeek(d);
+        key = `${d.getFullYear()}-W${week}`;
+        label = `${week}`;
+      } else if (activeFilter === 'month') {
+        key = `${d.getFullYear()}-${d.getMonth()}`;
+        const meseci = ['Januar', 'Februar', 'Mart', 'April', 'Maj', 'Jun', 'Jul', 'Avgust', 'Septembar', 'Oktobar', 'Novembar', 'Decembar'];
+        label = `${meseci[d.getMonth()]} ${d.getFullYear()}.`;
+      } else if (activeFilter === 'year') {
+        key = `${d.getFullYear()}`;
+        label = `${d.getFullYear()}.`;
+      }
+      
+      if (!groups[key]) {
+        groups[key] = { label, photos: [], key };
+      }
+      groups[key].photos.push(photo);
+    });
+    
+    return Object.values(groups).sort((a, b) => {
+      return b.photos[0].date - a.photos[0].date;
+    });
+  }, [activeFilter]);
+
+  const filterLabels = {
+    all: 'Sve fotografije',
+    day: 'Grupisano po danu',
+    week: 'Grupisano po nedelji',
+    month: 'Grupisano po mesecu',
+    year: 'Grupisano po godini'
+  };
+
+  // Preuzimanje grupe (placeholder - kasnije ZIP)
+  const handleDownloadGroup = (group) => {
+    const projectSlug = selectedProject.name.split(' - ')[1] || selectedProject.name;
+    let zipName;
+    if (activeFilter === 'week') {
+      zipName = `${projectSlug}_W${group.label}_${group.photos[0].date.getFullYear()}.zip`;
+    } else if (activeFilter === 'month') {
+      const m = String(group.photos[0].date.getMonth() + 1).padStart(2, '0');
+      zipName = `${projectSlug}_${group.photos[0].date.getFullYear()}_${m}.zip`;
+    } else if (activeFilter === 'year') {
+      zipName = `${projectSlug}_${group.label.replace('.', '')}.zip`;
+    } else {
+      zipName = `${projectSlug}_${group.photos[0].filename.split('_')[0]}.zip`;
+    }
+    alert(`Preuzimanje: ${zipName}\n(${group.photos.length} fotografija)\n\nZIP funkcija se dodaje kasnije.`);
+  };
 
   return (
     <div className="dashboard">
-      {/* Header */}
-      <header className="dashboard-header">
-        <div className="header-left">
-          <h1>SPOT/LOG</h1>
-        </div>
-        <div className="header-right">
-          <span className="user-email">{user.email}</span>
-          <button className="btn btn-secondary logout-btn" onClick={onLogout}>
-            ← Odjava
+      <header className="dash-header">
+        <div className="dash-logo">SPOT<span className="slash">/</span>LOG</div>
+        <nav className="dash-nav">
+          <a href="#projects">Projekti</a>
+          <a href="#photos">Fotografije</a>
+          <a href="#settings">Podešavanja</a>
+        </nav>
+        <div className="dash-header-right">
+          <button className="dash-theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+            {isDark ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            )}
           </button>
+          <span className="dash-lang"><strong>SR</strong> | EN</span>
+          <div className="dash-avatar">MN</div>
         </div>
       </header>
 
-      <div className="dashboard-content">
-        {/* Sidebar */}
-        <aside className="dashboard-sidebar">
-          <div className="sidebar-header">
-            <h2>Projekti</h2>
-            <button
-              className="btn btn-primary btn-small"
-              onClick={handleCreateProject}
-            >
-              + Novi
+      <div className="dash-body">
+        {/* SIDEBAR - lista projekata */}
+        <aside className="dash-sidebar">
+          <div className="sidebar-title-row">
+            <div className="sidebar-title">Projekti</div>
+            <button className="btn-icon" aria-label="Novi projekat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
             </button>
+          </div>
+          <div className="sidebar-subtitle">
+            {MOCK_PROJECTS.filter(p => p.status === 'aktivan').length} aktivna · {MOCK_PROJECTS.filter(p => p.status === 'zavrsen').length} završen
           </div>
 
           <div className="projects-list">
-            {projects.map((project) => (
+            {MOCK_PROJECTS.map(project => (
               <div
                 key={project.id}
-                className={`project-list-item ${
-                  selectedProject.id === project.id ? 'active' : ''
-                }`}
-                onClick={() => {
-                  setSelectedProject(project)
-                  setPhotos([])
-                }}
+                className={`project-item ${project.id === selectedProjectId ? 'selected' : ''}`}
+                onClick={() => setSelectedProjectId(project.id)}
               >
-                <div className="project-list-header">
-                  <h3>{project.name}</h3>
+                <div className="project-name">{project.name}</div>
+                <div className="project-location">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  <span>{project.location}</span>
                 </div>
-                <div className="project-list-meta">
-                  <span className="location">📍 {project.location}</span>
-                </div>
-                <div className="project-list-stats">
-                  <span className="photo-count">
-                    📸 {project.photos}
-                  </span>
-                  <span className={`status ${project.status.toLowerCase()}`}>
-                    {project.status}
+                <div className="project-footer">
+                  <span className="project-count">{project.photoCount.toLocaleString('sr-RS')} fotografija</span>
+                  <span className={`project-status status-${project.status}`}>
+                    {project.status === 'aktivan' ? 'AKTIVAN' : 'ZAVRŠEN'}
                   </span>
                 </div>
               </div>
@@ -125,100 +247,104 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         </aside>
 
-        {/* Main Content */}
-        <main className="dashboard-main">
-          {selectedProject && (
-            <>
-              {/* Project Header */}
-              <div className="project-header">
-                <div className="project-info">
-                  <h1>{selectedProject.name}</h1>
-                  <p className="project-location">📍 {selectedProject.location}</p>
-                </div>
-                <div className="project-actions">
-                  <button className="btn btn-secondary">📤 Deli projekat</button>
+        {/* MAIN - fotografije */}
+        <main className="dash-main">
+          <div className="main-header">
+            <div className="main-title-row">
+              <div>
+                <div className="main-project-name">{selectedProject.name}</div>
+                <div className="main-project-meta">
+                  <span className="meta-item">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    {selectedProject.location}
+                  </span>
+                  <span className="meta-dot">·</span>
+                  <span>{selectedProject.photoCount.toLocaleString('sr-RS')} fotografija</span>
+                  <span className="meta-dot">·</span>
+                  <span>{selectedProject.status === 'aktivan' ? 'Aktivan' : 'Završen'} od {selectedProject.activeFrom}</span>
                 </div>
               </div>
+              <div className="main-actions">
+                <button className="btn-outline">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  Otpremi
+                </button>
+                <button className="btn-outline">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Preuzmi
+                </button>
+              </div>
+            </div>
 
-              {/* Photos Section */}
-              <section className="photos-section">
-                <div className="section-header">
-                  <div>
-                    <h2>Fotografije ({selectedProject.photos})</h2>
-                    <select className="grouping-select">
-                      <option>Bez grupiranja</option>
-                      <option>Po danima</option>
-                      <option>Po nedeljama</option>
-                      <option>Po mesecima</option>
-                    </select>
-                  </div>
-                  <div className="section-actions">
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                    >
-                      {uploading ? '⏳ Uploadovanje...' : '⬆️ Dodaj fotografiju'}
-                    </button>
-                    <button className="btn btn-secondary">⬇️ Skini sve</button>
-                  </div>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  style={{ display: 'none' }}
-                />
-
-                {photos.length > 0 ? (
-                  <div className="photos-grid">
-                    {photos.map((photo) => (
-                      <div key={photo.id} className="photo-item">
-                        <div className="photo-placeholder">📷</div>
-                        <div className="photo-info">
-                          <p className="photo-name">{photo.name}</p>
-                          <p className="photo-meta">{photo.date} {photo.time}</p>
-                          <p className="photo-size">{photo.size}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <div className="empty-icon">📸</div>
-                    <h3>Još nema fotografija</h3>
-                    <p>Klikni na "Dodaj fotografiju" da počneš sa dokumentacijom</p>
-                  </div>
-                )}
-              </section>
-
-              {/* Activity Log */}
-              <section className="activity-section">
-                <h2>⏱️ Aktivnost</h2>
-                <div className="activity-item">
-                  <span className="activity-dot"></span>
-                  <div className="activity-content">
-                    <p className="activity-action">Projekat kreiran</p>
-                    <p className="activity-date">{selectedProject.createdDate}</p>
-                  </div>
-                </div>
-                {photos.slice(0, 3).map((photo) => (
-                  <div key={photo.id} className="activity-item">
-                    <span className="activity-dot"></span>
-                    <div className="activity-content">
-                      <p className="activity-action">Fotografija uploadovana: {photo.name}</p>
-                      <p className="activity-date">{photo.date} {photo.time}</p>
-                    </div>
-                  </div>
+            <div className="filter-row">
+              <div className="filter-tabs">
+                {['all', 'day', 'week', 'month', 'year'].map(filter => (
+                  <button
+                    key={filter}
+                    className={`filter-tab ${activeFilter === filter ? 'active' : ''}`}
+                    onClick={() => setActiveFilter(filter)}
+                  >
+                    {filter === 'all' ? 'Sve' : filter === 'day' ? 'Dan' : filter === 'week' ? 'Nedelja' : filter === 'month' ? 'Mesec' : 'Godina'}
+                  </button>
                 ))}
-              </section>
-            </>
-          )}
+              </div>
+              <div className="filter-meta">
+                <span>{filterLabels[activeFilter]}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="photos-content">
+            {groupedPhotos.map(group => (
+              <div key={group.key} className="photo-group">
+                <div className="group-header">
+                  <div className="group-label">{group.label}</div>
+                  <div className="group-meta">
+                    <span className="group-count">{group.photos.length} fotografija</span>
+                    {(activeFilter === 'week' || activeFilter === 'month' || activeFilter === 'year') && (
+                      <button
+                        className="btn-icon-small"
+                        onClick={() => handleDownloadGroup(group)}
+                        aria-label="Preuzmi grupu"
+                        title={`Preuzmi ceo ${activeFilter === 'week' ? 'nedeljni' : activeFilter === 'month' ? 'mesečni' : 'godišnji'} folder`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/>
+                          <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="photo-grid">
+                  {group.photos.slice(0, 12).map(photo => (
+                    <div key={photo.id} className="photo-tile" style={{ background: photo.gradient }}>
+                      <span className="photo-label">{photo.filename}</span>
+                    </div>
+                  ))}
+                  {group.photos.length > 12 && (
+                    <div className="photo-tile photo-more">
+                      <span className="photo-more-label">+{group.photos.length - 12}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </main>
       </div>
     </div>
-  )
+  );
 }
